@@ -1,98 +1,199 @@
-#include <wiringPiSPI.h>
-#include <wiringPi.h>
-#include <stdio.h>
-#define rd_sensor 0x11
-#define rd_spidata 0x20
-#define rd_spistat 0x21
-#define rd_regs 0x50
-#define wr_drivc 0x75
-#define wr_adcref 0x76
-#define wr_sensem 0x77
-#define wr_fifo_th 0x7c
-#define wr_xsense 0x7f
-#define wr_ysense 0x81
-#define wr_xshift 0x82
-#define wr_yshift 0x83
-#define wr_xreads 0x84
-#define dummy 0x00
-#define MAXROW 200
-#define MAXCOLUMN 152
-char image[MAXROW*MAXCOLUMN];
+#include "stdio.h"
+#include "ezdsp5535.h"
+#include "FPC1011.h"
+#include "ezdsp5535_led.h"
+#include "ezdsp5535_sar.h"
 
-int main(){
-	FILE *f = fopen("fingerprint.txt","w+"); 
-	int result,i,j;
-	char *ptr = image;
-	char buffer[10];
-	for(i=0;i<MAXROW*MAXCOLUMN;i++) image[i] = 0;
-	wiringPiSetup();
-	wiringPiSPISetup(0,500000);
-	
-	//Reset FPC1011
-	pinMode(0,OUTPUT);
-	digitalWrite(0,LOW);
-	digitalWrite(0,HIGH);
-	
-	//Configure FPC1011
-	buffer[0] = wr_drivc;
-	buffer[1] = 0x7f;
-	wiringPiSPIDataRW(0,buffer,2);
+#define THRESHOLD 500
 
-	buffer[0] = wr_adcref;
-	buffer[1] = 0x02;
-	wiringPiSPIDataRW(0,buffer,2);
+extern void FPC1011_read_IMG(Uint16* );
 
-	buffer[0] = wr_sensem;
-	buffer[1] = 0x00;	
-	wiringPiSPIDataRW(0,buffer,2);
-
-	//buffer[0] = wr_xsense;
-	//buffer[1] = 0xff;
-	//result = wiringPiSPIDataRW(0,buffer,2);
-
-	//buffer[0] = wr_ysense;
-	//buffer[1] = 0x01;
-	//result = wiringPiSPIDataRW(0,buffer,2);
-
-	buffer[0] = wr_fifo_th;
-	buffer[1] = 0x08;
-	wiringPiSPIDataRW(0,buffer,2);
-	
-	printf("Configure finish!\n");
-	buffer[0] = rd_sensor;
-	buffer[1] = dummy;
-	wiringPiSPIDataRW(0,buffer,2);
-	
-	//Waiting for data available
-	while(1){
-		buffer[0] = rd_spistat;
-		buffer[1] = dummy;
-		wiringPiSPIDataRW(0,buffer,2);
-		if(buffer[0] & 0x01) break;
-	}	
-	printf("Begin read image!\n");	
-	
-	//read image
-	for(i=0;i<MAXROW;i++){
-		*ptr = rd_spidata;
-		*(ptr+1) = dummy;
-		wiringPiSPIDataRW(0,ptr,MAXCOLUMN);
-		//for(j=0;j<152;j++){
-		//	printf("%d ",*(ptr+j));
-		//}
-		//printf("\n");
-		ptr += MAXCOLUMN;
-	}
-
-	for(i=0;i<MAXROW;i++){
-		for(j=0;j<MAXCOLUMN;j++){
-			fprintf(f,"%d\t",image[i*MAXCOLUMN+j]);
-		}
-		fprintf(f,"\n");
-	}	
-	printf("Finish!\n");
-
+int  TestFail    = (int)-1;
+int detect_feature(Uint16* image){
 	return 0;
 }
 
+int write_to_sdcard(Uint16* image){
+	return 0;
+}
+/*
+ *
+ *  main( )
+ *
+ */
 
+Uint8  sw1State  = 0;       // SW1 state
+Uint8  sw2State  = 0;       // SW2 state
+enum state{idle, test}s;
+void flash(){
+	int i;
+	for(i=0;i<5;i++){
+		EZDSP5535_LED_on(0);
+		EZDSP5535_waitusec(50000);
+		EZDSP5535_LED_on(1);
+		EZDSP5535_waitusec(50000);
+		EZDSP5535_LED_on(2);
+		EZDSP5535_waitusec(50000);
+		EZDSP5535_LED_on(3);
+		EZDSP5535_waitusec(50000);
+		EZDSP5535_LED_off(0);
+		EZDSP5535_waitusec(50000);
+		EZDSP5535_LED_off(1);
+		EZDSP5535_waitusec(50000);
+		EZDSP5535_LED_off(2);
+		EZDSP5535_waitusec(50000);
+		EZDSP5535_LED_off(3);
+		EZDSP5535_waitusec(50000);
+	}
+
+	for(i=0;i<6;i++){
+		EZDSP5535_LED_on(0);
+		EZDSP5535_LED_off(1);
+		EZDSP5535_LED_on(2);
+		EZDSP5535_LED_off(3);
+		EZDSP5535_waitusec(100000);
+		EZDSP5535_LED_on(1);
+		EZDSP5535_LED_off(0);
+		EZDSP5535_LED_on(3);
+		EZDSP5535_LED_off(2);
+		EZDSP5535_waitusec(100000);
+	}
+	EZDSP5535_LED_off(3);
+	EZDSP5535_LED_off(2);
+	EZDSP5535_LED_off(1);
+	EZDSP5535_LED_off(0);
+}
+
+
+int main( void )
+    {
+	Uint16 image[MAXCOLUMN*MAXROW+10] = {0};
+	int i,j, sum, counter = 0;
+	int flag = 0;
+
+	s = idle;
+    /* Initialize BSL */
+    EZDSP5535_init( );
+    EZDSP5535_LED_init( );
+    EZDSP5535_SAR_init();
+    FPC1011_init();
+
+    flash();
+    printf( "Starting System..\n");
+//    FPC1011_read_IMG(image);
+//
+//    for(i=0;i<MAXROW;i++){
+//    	for(j=0;j<MAXCOLUMN;j++){
+//    		printf("%d ", image[MAXCOLUMN*i+j+2]);
+//    	}
+//    	printf("\n");
+//    }
+
+    while(1){
+    	switch(s){
+    		case idle:
+    			EZDSP5535_SAR_init();
+    			EZDSP5535_LED_off(3);    //blue LED
+    			EZDSP5535_LED_on(2);
+    			EZDSP5535_LED_off(1);
+    			EZDSP5535_LED_off(0);
+    			EZDSP5535_waitusec(10000);
+    			if(EZDSP5535_SAR_getKey( ) == SW1 || EZDSP5535_SAR_getKey( ) == SW2){
+    				s = test;
+    				printf("Reading finger print...\n");
+    				FPC1011_init();
+    	    		EZDSP5535_LED_on(3);    //blue LED
+    	    		EZDSP5535_LED_off(2);
+    	    		EZDSP5535_LED_off(1);
+    	    		EZDSP5535_LED_off(0);
+    			}
+    			break;
+    		case test:
+				counter++;
+				if(counter>1){
+					printf("Read image fail!\n");
+					s = idle;
+					counter = 0;
+					break;
+				}
+    			FPC1011_read_IMG(image);
+//    			for(i=0;i<MAXROW;i++){
+//    				for(j=0;j<MAXCOLUMN;j++){
+//    			    	printf("%d ", image[MAXCOLUMN*i+j+2]);
+//    			    }
+//    			    printf("\n");
+//    			}
+    			for(i=0,sum=0;i<MAXCOLUMN*MAXROW;i++){
+    			    if(image[i]>100) sum++;
+    			}
+
+    			if(sum>THRESHOLD){
+    				printf( "Read image success!\n");
+    				flag = detect_feature(image);
+    				if(flag){
+        	    		EZDSP5535_LED_on(0);    //Green LED
+        	    		EZDSP5535_LED_off(2);
+        	    		EZDSP5535_LED_off(1);
+        	    		EZDSP5535_LED_off(3);
+    					printf("You are authenticated!\n");
+    				}
+    				else{
+        	    		EZDSP5535_LED_on(1);    //Red LED
+        	    		EZDSP5535_LED_off(2);
+        	    		EZDSP5535_LED_off(0);
+        	    		EZDSP5535_LED_off(3);
+    					printf("You are not authenticated!\n");
+    				}
+    				EZDSP5535_waitusec(2000000);
+    				s = idle;
+    				counter = 0;
+    			}
+    			break;
+    		default:break;
+    	}
+    }
+
+//    printf("System shutdown!");
+
+    return 0;
+}
+
+//
+//interrupt void sarIsr(void)
+//{
+//	IRQ_clear(SAR_EVENT);
+//	if(EZDSP5535_SAR_getKey( ) == SW1) // Is SW1 pressed?
+//	{
+//		if(sw1State)              // Was previous state not pressed?
+//		{
+//			//EZDSP5535_LED_toggle(0);  // Toggle DS2 (GREEN LED)
+//			s = test;
+//    		EZDSP5535_LED_on(3);    //blue LED
+//    		EZDSP5535_LED_off(2);
+//    		EZDSP5535_LED_off(1);
+//    		EZDSP5535_LED_off(0);
+//			sw1State = 0;     // Set state to 0 to allow only single press
+//			IRQ_disable(SAR_EVENT);
+//		}
+//	}
+//	else                      // SW1 not pressed
+//		sw1State = 1;         // Set state to 1 to allow timer change
+//
+//	/* Check SW2 */
+//	if(EZDSP5535_SAR_getKey( ) == SW2) // Is SW2 pressed?
+//	{
+//		if(sw2State)          // Was previous state not pressed?
+//		{
+//    		EZDSP5535_LED_on(3);    //blue LED
+//    		EZDSP5535_LED_off(2);
+//    		EZDSP5535_LED_off(1);
+//    		EZDSP5535_LED_off(0);
+//			s= test;
+//		    sw2State = 0;     // Set state to 0 to allow only single press
+//		    IRQ_disable(SAR_EVENT);
+//		}
+//	}
+//	else                      // SW2 not pressed
+//		sw2State = 1;         // Set state to 1 to allow tone change
+//
+//}
